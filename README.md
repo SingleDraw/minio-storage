@@ -53,7 +53,12 @@ This repo provides a Docker Compose setup for running MinIO with:
    * MinIO API: `http://localhost:9000`
    * MinIO Console (via Nginx): `http://localhost:8803`
 
-5. **Stop and clean up**
+5. **Set host nginx proxy and certbot certs**
+
+   ```bash
+   ./bin/setproxy
+   ```
+6. **Stop and clean up**
 
    ```bash
    ./bin/destroy
