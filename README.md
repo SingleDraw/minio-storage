@@ -67,7 +67,8 @@ This repo provides a Docker Compose setup for running MinIO with:
 .
 ├── bin
 │   ├── destroy      # Script to stop and remove containers and volumes
-│   └── install      # Script to setup env, optionally configure Fail2Ban, and start containers
+│   ├── install      # Script to setup env, optionally configure Fail2Ban, and start containers
+│   └── setproxy     # Script to setup certificates with certbot and proxy with host level nginx
 ├── conf
 │   ├── entrypoint.sh  # MinIO container entrypoint for readiness check
 │   └── nginx.conf     # Nginx configuration proxying MinIO console

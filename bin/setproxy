@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# read .env file
+if [ -f .env ]; then
+    set -o allexport
+    # shellcheck disable=SC1091
+    source .env
+    set +o allexport
+else
+    echo ".env file not found. Please create a .env file with variables: "
+    echo "  MINIO_ROOT_USER, MINIO_ROOT_PASSWORD, HOST_NAME."
+    exit 1
+fi
+
+HOST_NAME=${HOST_NAME:-"localhost"}       # Default to storage.amargroup.pl if HOST_NAME is not set in .env
+SITE_NAME=$HOST_NAME                      # Site name for SSL certificates
+TARGET_PORT=8803                          # Port where MinIO or its proxy is running
+
+ENDPOINT="http://127.0.0.1:$TARGET_PORT"  # Endpoint to which Nginx will proxy requests
+
+
+# 1. Setup certificates
+if [ ! -f /etc/letsencrypt/live/$SITE_NAME/fullchain.pem ] || [ ! -f /etc/letsencrypt/live/$SITE_NAME/privkey.pem ]; then
+    if [ ! -x "$(command -v certbot)" ]; then
+        echo "Certbot is not installed. Please install Certbot first."
+        exit 1
+    fi
+
+    echo "Certificates for $SITE_NAME not found. Running certbot to obtain them..."
+    sudo certbot certonly --nginx -d $SITE_NAME 
+    if [ $? -ne 0 ]; then
+        echo "Failed to obtain certificates. Please check your domain and DNS settings."
+        exit 1
+    fi
+else
+    echo "Certificates for $SITE_NAME already exist."
+fi
+
+# 2. Check if Nginx is installed
+if ! command -v nginx &> /dev/null; then
+    echo "Nginx is not installed. Please install Nginx first."
+    exit 1
+fi
+
+cat <<EOF > /etc/nginx/sites-available/$SITE_NAME
+# Define map for WebSocket upgrade connection header
+map \$http_upgrade \$connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+    listen 443 ssl;
+    server_name $HOST_NAME;
+
+    ssl_certificate /etc/letsencrypt/live/$SITE_NAME/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$SITE_NAME/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 1G;
+
+    location / {
+        proxy_pass $ENDPOINT;
+        proxy_http_version 1.1;
+
+        # WebSocket headers
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$http_connection_upgrade;
+        # proxy_set_header Connection "upgrade";
+
+        # Forward original host and client info
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # Authorization if needed
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header Cookie \$http_cookie;
+
+        proxy_cache_bypass \$http_upgrade;
+
+        # Add Content-Security-Policy header here:
+        add_header Content-Security-Policy "default-src 'self'; connect-src 'self' https://unpkg.com https://dl.min.io; script-src>    
+    }
+}
+
+server {
+    listen 80;
+    server_name $HOST_NAME;
+    return 301 https://\$host\$request_uri;
+}
+EOF
+
+# Create symlink to enable the site
+if [ ! -L /etc/nginx/sites-enabled/$SITE_NAME ]; then
+    sudo ln -s /etc/nginx/sites-available/$SITE_NAME /etc/nginx/sites-enabled/
+    echo "Enabled site $SITE_NAME"
+else
+    echo "Site $SITE_NAME is already enabled"
+fi
+
+# Test Nginx configuration
+sudo nginx -t
+if [ $? -ne 0 ]; then
+    echo "Nginx configuration test failed. Please check the configuration."
+    exit 1
+fi
+
+# Reload Nginx to apply changes
+sudo systemctl reload nginx
+
+
+# Check grep -R client_max_body_size /etc/nginx/ for max body size - it determines the maximum size of a file that can be uploaded.
+# It needs to be set in all relevant Nginx configuration files that lead to the MinIO service.
+
+echo "Nginx setup for MinIO with SSL is complete. You can access it at https://$HOST_NAME"
+echo "Make sure to check the Nginx configuration for client_max_body_size to ensure it meets your upload requirements."
+echo "If you need to adjust the maximum upload size, edit the Nginx configuration file and set client_max_body_size to a suitable value."
+echo "Here are the current settings for various Nginx configuration files:"
+grep -R client_max_body_size /etc/nginx/
+
+# --eof--
