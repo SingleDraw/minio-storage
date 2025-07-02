@@ -97,6 +97,7 @@ Set in `.env` or exported in the shell:
 
 * `MINIO_ROOT_USER` (default: `minio99`)
 * `MINIO_ROOT_PASSWORD` (default: `minio123`)
+* `HOST_NAME` (example: `mystorage.mydomain.com`)
 
 ---
 
@@ -111,5 +112,7 @@ Set in `.env` or exported in the shell:
 
 ## License
 
-MIT License
+This project is licensed under the **MIT License**.
+MinIO is used as a containerized service and is licensed under the **GNU AGPL v3**.
+See [MinIO License](https://github.com/minio/minio/blob/master/LICENSE) for details.
 
