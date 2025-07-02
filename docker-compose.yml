@@ -24,6 +24,7 @@ services:
       # Optional: Enable audit logging for better monitoring
       MINIO_AUDIT_WEBHOOK_ENABLE: "on"
       MINIO_AUDIT_WEBHOOK_ENDPOINT: "http://nginx/audit"
+      MINIO_BROWSER_UPLOAD_LIMIT: 10GiB # Adjust as needed
     command: server /data --console-address ":9001"
     restart: always
     volumes:
