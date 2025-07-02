@@ -1,0 +1,10 @@
+#!/bin/bash
+echo "Destroying MinIO setup..."
+# This script is used to destroy the MinIO setup by removing the data directory and stopping the MinIO server.
+docker-compose down 
+# Remove volumes 
+docker-compose down --volumes
+# Remove containers
+docker-compose rm --force 
+echo "MinIO setup has been destroyed. All data and configurations have been removed."
+# --eof--

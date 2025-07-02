@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# check if --fail2ban option is provided
+if [[ "$*" == *"--fail2ban"* ]]; then
+    echo "Fail2ban option detected. Proceeding with fail2ban setup."
+    FAIL2BAN=true
+else
+    echo "Fail2ban option not detected. Skipping fail2ban setup."
+    FAIL2BAN=false
+fi
+
+chmod +x ./conf/entrypoint.sh
+chmod +x ./bin/destroy
+
+# 1. Create a .env file if it doesn't exist
+if [ ! -f .env ]; then
+    echo "Creating .env file. Please fill in the required values."
+    echo "User should be at least 3 characters long and password at least 8 characters long."
+    echo "Example: MINIO_ROOT_USER=minio99, MINIO_ROOT_PASSWORD=minio123"
+
+    read -r -p "Enter MINIO_ROOT_USER (at least 3 characters): " MINIO_ROOT_USER
+    while [ ${#MINIO_ROOT_USER} -lt 3 ]; do
+        echo "User must be at least 3 characters long. Please try again."
+        read -r -p "Enter MINIO_ROOT_USER (at least 3 characters): " MINIO_ROOT_USER
+    done
+
+    read -r -p "Enter MINIO_ROOT_PASSWORD (at least 8 characters): " MINIO_ROOT_PASSWORD
+    while [ ${#MINIO_ROOT_PASSWORD} -lt 8 ]; do
+        echo "Password must be at least 8 characters long. Please try again."
+        read -r -p "Enter MINIO_ROOT_PASSWORD (at least 8 characters): " MINIO_ROOT_PASSWORD
+    done
+
+    echo "MINIO_ROOT_USER=$MINIO_ROOT_USER" > .env
+    echo "MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD" >> .env
+    echo ".env file created."
+fi
+
+# 2. Manage fail2ban
+if [ "$FAIL2BAN" = true ]; then
+    echo "Fail2ban setup is enabled."
+
+    # If fail2ban is not installed, install it
+    if ! command -v fail2ban-client &> /dev/null; then
+        echo "fail2ban is not installed. Installing fail2ban..."
+        sudo apt-get update
+        sudo apt-get install -y fail2ban
+        echo "fail2ban installed successfully."
+    else
+        echo "fail2ban is already installed."
+    fi
+
+    # 3. Apply jail configuration
+    mkdir -p /etc/fail2ban/jail.d
+
+    if [ -f /etc/fail2ban/jail.d/minio.conf ]; then
+        echo "Removing existing MinIO jail configuration..."
+        sudo rm /etc/fail2ban/jail.d/minio.conf
+    fi
+
+    sudo tee /etc/fail2ban/jail.d/minio.conf << 'EOF'
+[minio-console]
+enabled = true
+port = 9001
+filter = minio-console
+logpath = /var/log/nginx/access.log
+maxretry = 5
+findtime = 300
+bantime = 1800
+action = iptables-multiport[name=minio-console, port="9001", protocol=tcp]
+EOF
+
+    # 4. Create filter configuration
+    mkdir -p /etc/fail2ban/filter.d
+
+    if [ -f /etc/fail2ban/filter.d/minio-console.conf ]; then
+        echo "Removing existing MinIO filter configuration..."
+        sudo rm /etc/fail2ban/filter.d/minio-console.conf
+    fi
+
+    sudo tee /etc/fail2ban/filter.d/minio-console.conf << 'EOF'
+[Definition]
+failregex = ^<HOST> - .* "(POST|PUT) .*/api/v1/login.*" (401|403) .*$
+            ^<HOST> - .* "(POST|PUT) .*/api/v1/auth.*" (401|403) .*$
+            ^<HOST> - .* "POST .*" 401 .*MinIO.*$
+ignoreregex =
+EOF
+
+    # 5. Restart fail2ban service
+    echo "Restarting fail2ban service..."
+    sudo systemctl restart fail2ban
+
+    if [ $? -eq 0 ]; then
+        echo "fail2ban service restarted successfully."
+    else
+        echo "Failed to restart fail2ban service. Please check the logs."
+        exit 1
+    fi
+
+else
+    echo "Fail2ban setup is disabled. Skipping fail2ban configuration."
+fi
+
+docker-compose up -d
