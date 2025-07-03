@@ -12,6 +12,7 @@ fi
 chmod +x ./conf/entrypoint.sh
 chmod +x ./bin/destroy
 chmod +x ./bin/setproxy
+chmod +x ./bin/rebuild
 
 # 1. Create a .env file if it doesn't exist
 if [ ! -f .env ]; then
