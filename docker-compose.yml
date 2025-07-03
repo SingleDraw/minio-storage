@@ -28,6 +28,8 @@ services:
       MINIO_AUDIT_WEBHOOK_ENABLE: "on"
       MINIO_AUDIT_WEBHOOK_ENDPOINT: "http://nginx:8080/audit"
       MINIO_BROWSER_UPLOAD_LIMIT: 10GiB # Adjust as needed
+      # Backup configuration
+      BACKUP_DIR_LOCAL: ${BACKUP_DIR_LOCAL:-/mnt/backup/minio}
     command: server /data --console-address ":9001"
     restart: always
     volumes:

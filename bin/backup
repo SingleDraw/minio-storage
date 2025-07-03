@@ -1,0 +1,190 @@
+#!/bin/bash
+
+# -------------------------------------------------------
+# Local MinIO Backup Script
+# This script performs a backup of the MinIO server data to a local directory.
+# It uses the MinIO Client (mc) to mirror the MinIO bucket to a local directory.
+# The backup is stored in a directory named with the current date and time.
+# It also provides functionality to restore from the most recent backup or a specified backup date.
+# -------------------------------------------------------
+
+# ensure the script is run with root privileges
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run with root privileges."
+    echo "Please run with sudo or as root."
+    exit 1
+fi
+
+# read arguments
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || { [ "$1" != "--backup" ] && [ "$1" != "--restore" ] && [ "$1" != "--erase_backups" ]; }; then
+    echo "Invalid arguments."
+    echo "Usage: $0 [action] [backup_date]"
+    echo "Actions: --backup, --restore, --erase_backups"
+    echo "backup_date: Optional date (or directory name) for backup nameing, default format is YYYY-MM-DD_HH-MM-SS"
+    exit 1
+fi
+
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" ]]; then
+    # Use forward slashes for Windows paths
+    SHELLCMD="//bin/sh"
+else
+    # Use standard paths for Linux
+    SHELLCMD="/bin/sh"
+fi
+
+# check if mc (MinIO Client) is installed
+if ! command -v mc &> /dev/null; then
+    echo "MinIO Client (mc) is not installed. Installing it now..."
+    # Install mc using the official MinIO installation script
+    curl -O https://dl.min.io/client/mc/release/linux-amd64/mc
+    chmod +x mc
+    sudo mv mc /usr/local/bin/
+    echo "MinIO Client (mc) installed successfully."
+else
+    echo "MinIO Client (mc) is already installed."
+fi
+
+# read .env file
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+fi
+
+BACKUP_DATE=${2:-$(date +%Y-%m-%d_%H-%M-%S)}  # Default to current date and time if not provided
+BACKUP_DIR_LOCAL=${BACKUP_DIR_LOCAL:-"/mnt/backup/minio"}
+
+mkdir -p "$BACKUP_DIR_LOCAL"
+
+echo "Using backup directory: $BACKUP_DIR_LOCAL/$BACKUP_DATE"
+
+
+# Function to perform the backup
+# This function will use the MinIO Client (mc) to mirror the MinIO bucket to a local directory
+# It will create a new directory with the current date and time as the name, and store the backup there
+# If the backup fails, it will return an error code
+# If the backup succeeds, it will return a success message
+# The backup will include all objects in the MinIO bucket, preserving their structure and metadata
+function backup() {
+    local target_dir="$1"  # Use the provided date or current date as the target directory name
+    
+    echo "Starting MinIO backup..."
+    # Ensure the backup directory exists
+    mkdir -p "$BACKUP_DIR_LOCAL/$target_dir"
+    # Define source and destination for mc mirror
+    mc alias set src http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+
+    # Use mc to mirror the MinIO bucket to the backup directory
+    mc mirror src "$BACKUP_DIR_LOCAL/$BACKUP_DATE"
+    if [ $? -eq 0 ]; then
+        echo "Backup completed successfully."
+    else
+        echo "Backup failed."
+        return 1
+    fi
+}
+
+
+# Function to get the most recent backup directory
+# This function will list the backup directories in the backup directory and return the most recent one
+# If no backups are found, it will return an error message
+# If the backup directory does not exist, it will return an error message
+# The backup directory will be in the format "YYYY-MM-DD_HH-MM-SS"
+# It will return the name of the most recent backup directory, or an error message if no backups are found
+# If the backup directory does not exist, it will return an error message
+# Example usage: get_last_backup
+# Returns: "2023-10-01_12-00-00" (most recent backup directory name)   
+get_last_backup() {
+    # List the backups in the backup directory and get the most recent one
+    if [ -d "$BACKUP_DIR_LOCAL" ]; then
+        ls -1t "$BACKUP_DIR_LOCAL" | head -n 1
+    else
+        echo "Backup directory $BACKUP_DIR_LOCAL does not exist."
+        return 1
+    fi
+}
+
+# Function to restore a backup
+# This function will restore the most recent backup or a specified backup date
+# It will use the MinIO Client (mc) to mirror the backup directory back to the MinIO bucket
+# If the restore fails, it will return an error code
+# If the restore succeeds, it will return a success message
+# The restore will overwrite the existing objects in the MinIO bucket with the objects from the backup
+restore() {
+    local date="$1"  # Date of the backup to restore, e.g., "2023-10-01_12-00-00"
+    
+    if [ -z "$date" ]; then
+        date=$(get_last_backup)
+        if [ $? -ne 0 ]; then
+            echo "No backups found. Cannot restore."
+            return 1
+        fi
+    fi
+
+    echo "Restoring backup from $date..."
+
+    # Check if the specified backup directory exists
+    if [ ! -d "$BACKUP_DIR_LOCAL/$date" ]; then
+        echo "Backup directory $BACKUP_DIR_LOCAL/$date does not exist."
+        return 1
+    fi
+
+    # Use mc to mirror the backup directory back to the MinIO bucket
+    mc alias set dst http://localhost:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+    mc mirror "$BACKUP_DIR_LOCAL/$date" dst
+    if [ $? -eq 0 ]; then
+        echo "Restore completed successfully."
+    else
+        echo "Restore failed."
+        return 1
+    fi
+}
+
+
+# --------- Main script execution ----------
+
+# Perform the restore
+if [ "$1" == "--restore" ]; then
+    # Restore from the specified backup date or the most recent backup
+    restore "$BACKUP_DATE"
+    if [ $? -eq 0 ]; then
+        echo "Restore completed successfully."
+    else
+        echo "Restore failed."
+        exit 1
+    fi
+    exit 0
+fi
+
+# Perform the backup
+if [ "$1" == "--backup" ]; then
+    backup "$BACKUP_DATE"
+    if [ $? -eq 0 ]; then
+        echo "Backup completed successfully."
+    else
+        echo "Backup failed."
+        exit 1
+    fi
+    exit 0
+fi
+
+# Perform the erase backups
+if [ "$1" == "--erase_backups" ]; then
+    echo "Erasing all backups in $BACKUP_DIR_LOCAL..."
+    if [ -d "$BACKUP_DIR_LOCAL" ]; then
+        rm -rf "$BACKUP_DIR_LOCAL"/*
+        if [ $? -eq 0 ]; then
+            echo "All backups erased successfully."
+        else
+            echo "Failed to erase backups."
+            exit 1
+        fi
+    else
+        echo "Backup directory $BACKUP_DIR_LOCAL does not exist."
+        exit 1
+    fi
+    exit 0
+fi
+
+# ---eof file---
