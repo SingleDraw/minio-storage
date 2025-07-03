@@ -67,7 +67,7 @@ This repo provides a Docker Compose setup for running MinIO with:
    ./bin/destroy
    ```
 
-7. **Backup MinIO dat**
+7. **Backup MinIO data**
 
    ```bash
    # stores backup at defined absolute local path target 
