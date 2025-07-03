@@ -60,10 +60,25 @@ This repo provides a Docker Compose setup for running MinIO with:
    ```bash
    ./bin/setproxy
    ```
+
 6. **Stop and clean up**
 
    ```bash
    ./bin/destroy
+   ```
+
+7. **Backup MinIO dat**
+
+   ```bash
+   # stores backup at defined absolute local path target 
+   # defined in .env file as BACKUP_DIR_LOCAL
+   ./bin/backup --backup [date_or_name]
+
+   # perform restore
+   ./bin/backup --restore [date_or_name]
+
+   # prune all backups from local directory
+   ./bin/backup --erase_backups
    ```
 
 ---
@@ -74,6 +89,9 @@ This repo provides a Docker Compose setup for running MinIO with:
 .
 ├── bin
 │   ├── destroy      # Script to stop and remove containers and volumes
+│   ├── setproxy     # Script to setup host level nginx and domain certs
+│   ├── rebuild      # Script to rebuild MinIO setup (prunes volumes!)
+│   ├── backup       # Script to perform backup operations
 │   ├── install      # Script to setup env, optionally configure Fail2Ban, and start containers
 │   └── setproxy     # Script to setup certificates with certbot and proxy with host level nginx
 ├── conf
@@ -107,6 +125,7 @@ Set in `.env` or exported in the shell:
 * `HOST_NAME` (example: `mystorage.mydomain.com`)
 * `USERS` (example: `user1,user2`)
 * `PASSWORDS` (example: `pass1,pass2`)
+* `BACKUP_DIR_LOCAL` (example: `/mnt/backup/minio`)
 
 ---
 
