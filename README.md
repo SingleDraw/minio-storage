@@ -38,6 +38,8 @@ This repo provides a Docker Compose setup for running MinIO with:
    MINIO_ROOT_PASSWORD=minio123
    ```
 
+   > Optionally provide USERS with comma separated usernames and PASSWORDS environment variables for predefined user accounts with private buckets and policies.
+
 3. **Run the installation**
 
    ```bash
@@ -103,6 +105,8 @@ Set in `.env` or exported in the shell:
 * `MINIO_ROOT_USER` (default: `minio99`)
 * `MINIO_ROOT_PASSWORD` (default: `minio123`)
 * `HOST_NAME` (example: `mystorage.mydomain.com`)
+* `USERS` (example: `user1,user2`)
+* `PASSWORDS` (example: `pass1,pass2`)
 
 ---
 
